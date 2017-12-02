@@ -60,15 +60,28 @@ namespace osu.Game.Graphics
             updateTexture();
         }
 
+        protected override void LoadComplete()
+        {
+            base.LoadComplete();
+            updateTexture();
+        }
+
+        private FontAwesome loadedIcon;
         private void updateTexture()
         {
-            var texture = store?.Get(((char)icon).ToString());
+            var loadableIcon = icon;
+
+            if (loadableIcon == loadedIcon) return;
+
+            var texture = store?.Get(((char)loadableIcon).ToString());
 
             spriteMain.Texture = texture;
             spriteShadow.Texture = texture;
 
             if (Size == Vector2.Zero)
                 Size = new Vector2(texture?.DisplayWidth ?? 0, texture?.DisplayHeight ?? 0);
+
+            loadedIcon = loadableIcon;
         }
 
         public override bool Invalidate(Invalidation invalidation = Invalidation.All, Drawable source = null, bool shallPropagate = true)

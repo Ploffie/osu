@@ -11,6 +11,7 @@ using OpenTK.Graphics;
 using osu.Game.Graphics;
 using osu.Framework.Extensions.Color4Extensions;
 using osu.Framework.Allocation;
+using osu.Game.Rulesets.Osu.Judgements;
 using osu.Game.Screens.Ranking;
 
 namespace osu.Game.Rulesets.Osu.Objects.Drawables
@@ -21,6 +22,7 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
         private readonly SpinnerDisc disc;
         private readonly SpinnerTicks ticks;
+        private readonly SpinnerSpmCounter spmCounter;
 
         private readonly Container mainContainer;
 
@@ -102,12 +104,19 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
                         },
                     }
                 },
+                spmCounter = new SpinnerSpmCounter
+                {
+                    Anchor = Anchor.Centre,
+                    Origin = Anchor.Centre,
+                    Y = 120,
+                    Alpha = 0
+                }
             };
         }
 
         public float Progress => MathHelper.Clamp(disc.RotationAbsolute / 360 / spinner.SpinsRequired, 0, 1);
 
-        protected override void CheckJudgement(bool userTriggered)
+        protected override void CheckForJudgements(bool userTriggered, double timeOffset)
         {
             if (Time.Current < HitObject.StartTime) return;
 
@@ -129,26 +138,13 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
             if (!userTriggered && Time.Current >= spinner.EndTime)
             {
                 if (Progress >= 1)
-                {
-                    Judgement.Score = OsuScoreResult.Hit300;
-                    Judgement.Result = HitResult.Hit;
-                }
+                    AddJudgement(new OsuJudgement { Result = HitResult.Great });
                 else if (Progress > .9)
-                {
-                    Judgement.Score = OsuScoreResult.Hit100;
-                    Judgement.Result = HitResult.Hit;
-                }
+                    AddJudgement(new OsuJudgement { Result = HitResult.Good });
                 else if (Progress > .75)
-                {
-                    Judgement.Score = OsuScoreResult.Hit50;
-                    Judgement.Result = HitResult.Hit;
-                }
-                else
-                {
-                    Judgement.Score = OsuScoreResult.Miss;
-                    if (Time.Current >= spinner.EndTime)
-                        Judgement.Result = HitResult.Miss;
-                }
+                    AddJudgement(new OsuJudgement { Result = HitResult.Meh });
+                else if (Time.Current >= spinner.EndTime)
+                    AddJudgement(new OsuJudgement { Result = HitResult.Miss });
             }
         }
 
@@ -169,6 +165,8 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
         protected override void Update()
         {
             disc.Tracking = OsuActionInputManager.PressedActions.Any(x => x == OsuAction.LeftButton || x == OsuAction.RightButton);
+            if (!spmCounter.IsPresent && disc.Tracking)
+                spmCounter.FadeIn(TIME_FADEIN);
 
             base.Update();
         }
@@ -179,6 +177,7 @@ namespace osu.Game.Rulesets.Osu.Objects.Drawables
 
             circle.Rotation = disc.Rotation;
             ticks.Rotation = disc.Rotation;
+            spmCounter.SetRotation(disc.RotationAbsolute);
 
             float relativeCircleScale = spinner.Scale * circle.DrawHeight / mainContainer.DrawHeight;
             disc.ScaleTo(relativeCircleScale + (1 - relativeCircleScale) * Progress, 200, Easing.OutQuint);

@@ -19,7 +19,7 @@ using osu.Framework.Allocation;
 
 namespace osu.Game.Screens.Menu
 {
-    internal class LogoVisualisation : Drawable, IHasAccentColour
+    public class LogoVisualisation : Drawable, IHasAccentColour
     {
         private readonly Bindable<WorkingBeatmap> beatmap = new Bindable<WorkingBeatmap>();
 
@@ -73,7 +73,7 @@ namespace osu.Game.Screens.Menu
         {
             texture = Texture.WhitePixel;
             AccentColour = new Color4(1, 1, 1, 0.2f);
-            BlendingMode = BlendingMode.Additive;
+            Blending = BlendingMode.Additive;
         }
 
         [BackgroundDependencyLoader]
@@ -85,11 +85,10 @@ namespace osu.Game.Screens.Menu
 
         private void updateAmplitudes()
         {
-            var track = beatmap.Value.Track;
+            var track = beatmap.Value.TrackLoaded ? beatmap.Value.Track : null;
+            var effect = beatmap.Value.BeatmapLoaded ? beatmap.Value.Beatmap.ControlPointInfo.EffectPointAt(track?.CurrentTime ?? Time.Current) : null;
 
             float[] temporalAmplitudes = track?.CurrentAmplitudes.FrequencyAmplitudes ?? new float[256];
-
-            var effect = beatmap.Value.Beatmap.ControlPointInfo.EffectPointAt(track?.CurrentTime ?? Time.Current);
 
             for (int i = 0; i < bars_per_visualiser; i++)
             {
@@ -201,10 +200,10 @@ namespace osu.Game.Screens.Menu
                             var amplitudeOffset = new Vector2(rotationCos * barSize.Y, rotationSin * barSize.Y);
 
                             var rectangle = new Quad(
-                                (barPosition - bottomOffset) * DrawInfo.Matrix,
-                                (barPosition - bottomOffset + amplitudeOffset) * DrawInfo.Matrix,
-                                (barPosition + bottomOffset) * DrawInfo.Matrix,
-                                (barPosition + bottomOffset + amplitudeOffset) * DrawInfo.Matrix
+                                Vector2Extensions.Transform(barPosition - bottomOffset, DrawInfo.Matrix),
+                                Vector2Extensions.Transform(barPosition - bottomOffset + amplitudeOffset, DrawInfo.Matrix),
+                                Vector2Extensions.Transform(barPosition + bottomOffset, DrawInfo.Matrix),
+                                Vector2Extensions.Transform(barPosition + bottomOffset + amplitudeOffset, DrawInfo.Matrix)
                             );
 
                             Texture.DrawQuad(

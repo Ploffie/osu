@@ -9,7 +9,7 @@ using osu.Game.Graphics;
 
 namespace osu.Game.Overlays.Toolbar
 {
-    internal class ToolbarOverlayToggleButton : ToolbarButton
+    public class ToolbarOverlayToggleButton : ToolbarButton
     {
         private readonly Box stateBackground;
 
@@ -32,7 +32,7 @@ namespace osu.Game.Overlays.Toolbar
             {
                 RelativeSizeAxes = Axes.Both,
                 Colour = OsuColour.Gray(150).Opacity(180),
-                BlendingMode = BlendingMode.Additive,
+                Blending = BlendingMode.Additive,
                 Depth = 2,
                 Alpha = 0,
             });
@@ -45,7 +45,7 @@ namespace osu.Game.Overlays.Toolbar
                 stateContainer.StateChanged -= stateChanged;
         }
 
-        private void stateChanged(VisibilityContainer c, Visibility state)
+        private void stateChanged(Visibility state)
         {
             switch (state)
             {

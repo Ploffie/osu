@@ -11,19 +11,15 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Transforms;
 using osu.Framework.Input;
 using osu.Framework.MathUtils;
-using osu.Game.Rulesets.Judgements;
-using osu.Game.Rulesets.Objects;
 using osu.Game.Rulesets.Objects.Drawables;
 using osu.Game.Rulesets.Timing;
 
 namespace osu.Game.Rulesets.UI
 {
     /// <summary>
-    /// A type of <see cref="Playfield{TObject, TJudgement}"/> specialized towards scrolling <see cref="DrawableHitObject"/>s.
+    /// A type of <see cref="Playfield"/> specialized towards scrolling <see cref="DrawableHitObject"/>s.
     /// </summary>
-    public class ScrollingPlayfield<TObject, TJudgement> : Playfield<TObject, TJudgement>
-        where TObject : HitObject
-        where TJudgement : Judgement
+    public class ScrollingPlayfield : Playfield
     {
         /// <summary>
         /// The default span of time visible by the length of the scrolling axes.
@@ -55,9 +51,9 @@ namespace osu.Game.Rulesets.UI
         };
 
         /// <summary>
-        /// Whether to reverse the scrolling direction is reversed.
+        /// Whether to reverse the scrolling direction is reversed. Note that this does _not_ invert the hit objects.
         /// </summary>
-        public readonly BindableBool Reversed = new BindableBool();
+        protected readonly BindableBool Reversed = new BindableBool();
 
         /// <summary>
         /// The container that contains the <see cref="SpeedAdjustmentContainer"/>s and <see cref="DrawableHitObject"/>s.
@@ -65,7 +61,7 @@ namespace osu.Game.Rulesets.UI
         public new readonly ScrollingHitObjectContainer HitObjects;
 
         /// <summary>
-        /// Creates a new <see cref="ScrollingPlayfield{TObject, TJudgement}"/>.
+        /// Creates a new <see cref="ScrollingPlayfield"/>.
         /// </summary>
         /// <param name="scrollingAxes">The axes on which <see cref="DrawableHitObject"/>s in this container should scroll.</param>
         /// <param name="customWidth">Whether we want our internal coordinate system to be scaled to a specified width</param>
@@ -77,21 +73,21 @@ namespace osu.Game.Rulesets.UI
             HitObjects.Reversed.BindTo(Reversed);
         }
 
-        private List<ScrollingPlayfield<TObject, TJudgement>> nestedPlayfields;
+        private List<ScrollingPlayfield> nestedPlayfields;
         /// <summary>
-        /// All the <see cref="ScrollingPlayfield{TObject, TJudgement}"/>s nested inside this playfield.
+        /// All the <see cref="ScrollingPlayfield"/>s nested inside this playfield.
         /// </summary>
-        public IEnumerable<ScrollingPlayfield<TObject, TJudgement>> NestedPlayfields => nestedPlayfields;
+        public IEnumerable<ScrollingPlayfield> NestedPlayfields => nestedPlayfields;
 
         /// <summary>
-        /// Adds a <see cref="ScrollingPlayfield{TObject, TJudgement}"/> to this playfield. The nested <see cref="ScrollingPlayfield{TObject, TJudgement}"/>
+        /// Adds a <see cref="ScrollingPlayfield"/> to this playfield. The nested <see cref="ScrollingPlayfield"/>
         /// will be given all of the same speed adjustments as this playfield.
         /// </summary>
-        /// <param name="otherPlayfield">The <see cref="ScrollingPlayfield{TObject, TJudgement}"/> to add.</param>
-        protected void AddNested(ScrollingPlayfield<TObject, TJudgement> otherPlayfield)
+        /// <param name="otherPlayfield">The <see cref="ScrollingPlayfield"/> to add.</param>
+        protected void AddNested(ScrollingPlayfield otherPlayfield)
         {
             if (nestedPlayfields == null)
-                nestedPlayfields = new List<ScrollingPlayfield<TObject, TJudgement>>();
+                nestedPlayfields = new List<ScrollingPlayfield>();
 
             nestedPlayfields.Add(otherPlayfield);
         }
@@ -119,7 +115,7 @@ namespace osu.Game.Rulesets.UI
             this.TransformTo(this.PopulateTransform(new TransformVisibleTimeRange(), newTimeRange, duration, easing));
         }
 
-        private class TransformVisibleTimeRange : Transform<double, ScrollingPlayfield<TObject, TJudgement>>
+        private class TransformVisibleTimeRange : Transform<double, ScrollingPlayfield>
         {
             private double valueAt(double time)
             {
@@ -131,8 +127,8 @@ namespace osu.Game.Rulesets.UI
 
             public override string TargetMember => "VisibleTimeRange.Value";
 
-            protected override void Apply(ScrollingPlayfield<TObject, TJudgement> d, double time) => d.VisibleTimeRange.Value = valueAt(time);
-            protected override void ReadIntoStartValue(ScrollingPlayfield<TObject, TJudgement> d) => StartValue = d.VisibleTimeRange.Value;
+            protected override void Apply(ScrollingPlayfield d, double time) => d.VisibleTimeRange.Value = valueAt(time);
+            protected override void ReadIntoStartValue(ScrollingPlayfield d) => StartValue = d.VisibleTimeRange.Value;
         }
 
         /// <summary>
@@ -151,7 +147,7 @@ namespace osu.Game.Rulesets.UI
             /// </summary>
             public readonly BindableBool Reversed = new BindableBool();
 
-            private readonly Container<SpeedAdjustmentContainer> speedAdjustments;
+            private readonly SortedContainer speedAdjustments;
             public IReadOnlyList<SpeedAdjustmentContainer> SpeedAdjustments => speedAdjustments;
 
             private readonly SpeedAdjustmentContainer defaultSpeedAdjustment;
@@ -166,14 +162,15 @@ namespace osu.Game.Rulesets.UI
             {
                 this.scrollingAxes = scrollingAxes;
 
-                AddInternal(speedAdjustments = new Container<SpeedAdjustmentContainer> { RelativeSizeAxes = Axes.Both });
+                AddInternal(speedAdjustments = new SortedContainer { RelativeSizeAxes = Axes.Both });
 
                 // Default speed adjustment
                 AddSpeedAdjustment(defaultSpeedAdjustment = new SpeedAdjustmentContainer(new MultiplierControlPoint(0)));
             }
 
             /// <summary>
-            /// Adds a <see cref="SpeedAdjustmentContainer"/> to this container.
+            /// Adds a <see cref="SpeedAdjustmentContainer"/> to this container, re-sorting all hit objects
+            /// in the last <see cref="SpeedAdjustmentContainer"/> that occurred (time-wise) before it.
             /// </summary>
             /// <param name="speedAdjustment">The <see cref="SpeedAdjustmentContainer"/>.</param>
             public void AddSpeedAdjustment(SpeedAdjustmentContainer speedAdjustment)
@@ -181,26 +178,27 @@ namespace osu.Game.Rulesets.UI
                 speedAdjustment.ScrollingAxes = scrollingAxes;
                 speedAdjustment.VisibleTimeRange.BindTo(VisibleTimeRange);
                 speedAdjustment.Reversed.BindTo(Reversed);
-                speedAdjustments.Add(speedAdjustment);
 
-                // We now need to re-sort the hit objects in the last speed adjustment prior to this one, to see if they need a new parent
-                var previousSpeedAdjustment = speedAdjustments.LastOrDefault(s => s != speedAdjustment && s.ControlPoint.StartTime <= speedAdjustment.ControlPoint.StartTime);
-                if (previousSpeedAdjustment == null)
-                    return;
-
-                for (int i = 0; i < previousSpeedAdjustment.Children.Count; i++)
+                if (speedAdjustments.Count > 0)
                 {
-                    DrawableHitObject hitObject = previousSpeedAdjustment[i];
+                    // We need to re-sort all hit objects in the speed adjustment container prior to figure out if they
+                    // should now lie within this one
+                    var existingAdjustment = adjustmentContainerAt(speedAdjustment.ControlPoint.StartTime);
+                    for (int i = 0; i < existingAdjustment.Count; i++)
+                    {
+                        DrawableHitObject hitObject = existingAdjustment[i];
 
-                    var newSpeedAdjustment = adjustmentContainerFor(hitObject);
-                    if (newSpeedAdjustment == previousSpeedAdjustment)
-                        continue;
+                        if (!speedAdjustment.CanContain(hitObject.HitObject.StartTime))
+                            continue;
 
-                    previousSpeedAdjustment.Remove(hitObject);
-                    newSpeedAdjustment.Add(hitObject);
+                        existingAdjustment.Remove(hitObject);
+                        speedAdjustment.Add(hitObject);
 
-                    i--;
+                        i--;
+                    }
                 }
+
+                speedAdjustments.Add(speedAdjustment);
             }
 
             /// <summary>
@@ -237,19 +235,10 @@ namespace osu.Game.Rulesets.UI
                 if (!(hitObject is IScrollingHitObject))
                     throw new InvalidOperationException($"Hit objects added to a {nameof(ScrollingHitObjectContainer)} must implement {nameof(IScrollingHitObject)}.");
 
-                adjustmentContainerFor(hitObject).Add(hitObject);
+                adjustmentContainerAt(hitObject.HitObject.StartTime).Add(hitObject);
             }
 
             public override bool Remove(DrawableHitObject hitObject) => speedAdjustments.Any(s => s.Remove(hitObject));
-
-            /// <summary>
-            /// Finds the <see cref="SpeedAdjustmentContainer"/> which provides the speed adjustment active at the start time
-            /// of a hit object. If there is no <see cref="SpeedAdjustmentContainer"/> active at the start time of the hit object,
-            /// then the first (time-wise) speed adjustment is returned.
-            /// </summary>
-            /// <param name="hitObject">The hit object to find the active <see cref="SpeedAdjustmentContainer"/> for.</param>
-            /// <returns>The <see cref="SpeedAdjustmentContainer"/> active at <paramref name="hitObject"/>'s start time. Null if there are no speed adjustments.</returns>
-            private SpeedAdjustmentContainer adjustmentContainerFor(DrawableHitObject hitObject) => speedAdjustments.LastOrDefault(c => c.CanContain(hitObject)) ?? defaultSpeedAdjustment;
 
             /// <summary>
             /// Finds the <see cref="SpeedAdjustmentContainer"/> which provides the speed adjustment active at a time.
@@ -257,7 +246,21 @@ namespace osu.Game.Rulesets.UI
             /// </summary>
             /// <param name="time">The time to find the active <see cref="SpeedAdjustmentContainer"/> at.</param>
             /// <returns>The <see cref="SpeedAdjustmentContainer"/> active at <paramref name="time"/>. Null if there are no speed adjustments.</returns>
-            private SpeedAdjustmentContainer adjustmentContainerAt(double time) => speedAdjustments.LastOrDefault(c => c.CanContain(time)) ?? defaultSpeedAdjustment;
+            private SpeedAdjustmentContainer adjustmentContainerAt(double time) => speedAdjustments.FirstOrDefault(c => c.CanContain(time)) ?? defaultSpeedAdjustment;
+
+            private class SortedContainer : Container<SpeedAdjustmentContainer>
+            {
+                protected override int Compare(Drawable x, Drawable y)
+                {
+                    var sX = (SpeedAdjustmentContainer)x;
+                    var sY = (SpeedAdjustmentContainer)y;
+
+                    int result = sY.ControlPoint.StartTime.CompareTo(sX.ControlPoint.StartTime);
+                    if (result != 0)
+                        return result;
+                    return base.Compare(y, x);
+                }
+            }
         }
     }
 }

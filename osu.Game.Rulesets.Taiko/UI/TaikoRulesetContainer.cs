@@ -9,20 +9,18 @@ using osu.Game.Rulesets.Objects.Types;
 using osu.Game.Rulesets.Replays;
 using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.Taiko.Beatmaps;
-using osu.Game.Rulesets.Taiko.Judgements;
 using osu.Game.Rulesets.Taiko.Objects;
 using osu.Game.Rulesets.Taiko.Objects.Drawables;
 using osu.Game.Rulesets.Taiko.Scoring;
 using osu.Game.Rulesets.UI;
 using osu.Game.Rulesets.Taiko.Replays;
 using OpenTK;
-using osu.Game.Rulesets.Beatmaps;
 using System.Linq;
 using osu.Framework.Input;
 
 namespace osu.Game.Rulesets.Taiko.UI
 {
-    public class TaikoRulesetContainer : ScrollingRulesetContainer<TaikoPlayfield, TaikoHitObject, TaikoJudgement>
+    public class TaikoRulesetContainer : ScrollingRulesetContainer<TaikoPlayfield, TaikoHitObject>
     {
         public TaikoRulesetContainer(Ruleset ruleset, WorkingBeatmap beatmap, bool isForCurrentRuleset)
             : base(ruleset, beatmap, isForCurrentRuleset)
@@ -65,7 +63,7 @@ namespace osu.Game.Rulesets.Taiko.UI
                     StartTime = time,
                 };
 
-                barLine.ApplyDefaults(Beatmap.ControlPointInfo, Beatmap.BeatmapInfo.Difficulty);
+                barLine.ApplyDefaults(Beatmap.ControlPointInfo, Beatmap.BeatmapInfo.BaseDifficulty);
 
                 bool isMajor = currentBeat % (int)currentPoint.TimeSignature == 0;
                 Playfield.Add(isMajor ? new DrawableBarLineMajor(barLine) : new DrawableBarLine(barLine));
@@ -91,17 +89,17 @@ namespace osu.Game.Rulesets.Taiko.UI
 
         public override ScoreProcessor CreateScoreProcessor() => new TaikoScoreProcessor(this);
 
-        protected override BeatmapConverter<TaikoHitObject> CreateBeatmapConverter() => new TaikoBeatmapConverter();
+        protected override BeatmapConverter<TaikoHitObject> CreateBeatmapConverter() => new TaikoBeatmapConverter(IsForCurrentRuleset);
 
         public override PassThroughInputManager CreateInputManager() => new TaikoInputManager(Ruleset.RulesetInfo);
 
-        protected override Playfield<TaikoHitObject, TaikoJudgement> CreatePlayfield() => new TaikoPlayfield
+        protected override Playfield CreatePlayfield() => new TaikoPlayfield
         {
             Anchor = Anchor.CentreLeft,
             Origin = Anchor.CentreLeft
         };
 
-        protected override DrawableHitObject<TaikoHitObject, TaikoJudgement> GetVisualRepresentation(TaikoHitObject h)
+        protected override DrawableHitObject<TaikoHitObject> GetVisualRepresentation(TaikoHitObject h)
         {
             var centreHit = h as CentreHit;
             if (centreHit != null)

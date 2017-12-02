@@ -21,6 +21,8 @@ namespace osu.Game.Rulesets.Taiko.Objects.Drawables
             FillMode = FillMode.Fit;
         }
 
+        public override bool DisplayJudgement => false;
+
         protected override void LoadComplete()
         {
             base.LoadComplete();
@@ -34,18 +36,17 @@ namespace osu.Game.Rulesets.Taiko.Objects.Drawables
             Filled = HitObject.FirstTick
         };
 
-        protected override TaikoJudgement CreateJudgement() => new TaikoDrumRollTickJudgement { SecondHit = HitObject.IsStrong };
-
-        protected override void CheckJudgement(bool userTriggered)
+        protected override void CheckForJudgements(bool userTriggered, double timeOffset)
         {
             if (!userTriggered)
                 return;
 
-            if (Math.Abs(Judgement.TimeOffset) < HitObject.HitWindow)
-            {
-                Judgement.Result = HitResult.Hit;
-                Judgement.TaikoResult = TaikoHitResult.Great;
-            }
+            if (!(Math.Abs(timeOffset) < HitObject.HitWindow))
+                return;
+
+            AddJudgement(new TaikoDrumRollTickJudgement { Result = HitResult.Great });
+            if (HitObject.IsStrong)
+                AddJudgement(new TaikoStrongHitJudgement());
         }
 
         protected override void UpdateState(ArmedState state)
@@ -58,9 +59,6 @@ namespace osu.Game.Rulesets.Taiko.Objects.Drawables
             }
         }
 
-        public override bool OnPressed(TaikoAction action)
-        {
-            return Judgement.Result == HitResult.None && UpdateJudgement(true);
-        }
+        public override bool OnPressed(TaikoAction action) => UpdateJudgement(true);
     }
 }

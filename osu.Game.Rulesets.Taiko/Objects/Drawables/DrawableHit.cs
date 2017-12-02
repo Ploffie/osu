@@ -18,6 +18,11 @@ namespace osu.Game.Rulesets.Taiko.Objects.Drawables
         protected abstract TaikoAction[] HitActions { get; }
 
         /// <summary>
+        /// Whether a second hit is allowed to be processed. This occurs once this hit object has been hit successfully.
+        /// </summary>
+        protected bool SecondHitAllowed { get; private set; }
+
+        /// <summary>
         /// Whether the last key pressed is a valid hit key.
         /// </summary>
         private bool validKeyPressed;
@@ -28,47 +33,48 @@ namespace osu.Game.Rulesets.Taiko.Objects.Drawables
             FillMode = FillMode.Fit;
         }
 
-        protected override void LoadComplete()
-        {
-            base.LoadComplete();
-
-            // We need to set this here because RelativeSizeAxes won't/can't set our size by default with a different RelativeChildSize
-            Width *= Parent.RelativeChildSize.X;
-        }
-
-        protected override void CheckJudgement(bool userTriggered)
+        protected override void CheckForJudgements(bool userTriggered, double timeOffset)
         {
             if (!userTriggered)
             {
-                if (Judgement.TimeOffset > HitObject.HitWindowGood)
-                    Judgement.Result = HitResult.Miss;
+                if (timeOffset > HitObject.HitWindowGood)
+                    AddJudgement(new TaikoJudgement { Result = HitResult.Miss });
                 return;
             }
 
-            double hitOffset = Math.Abs(Judgement.TimeOffset);
+            double hitOffset = Math.Abs(timeOffset);
 
             if (hitOffset > HitObject.HitWindowMiss)
                 return;
 
             if (!validKeyPressed)
-                Judgement.Result = HitResult.Miss;
+                AddJudgement(new TaikoJudgement { Result = HitResult.Miss });
             else if (hitOffset < HitObject.HitWindowGood)
             {
-                Judgement.Result = HitResult.Hit;
-                Judgement.TaikoResult = hitOffset < HitObject.HitWindowGreat ? TaikoHitResult.Great : TaikoHitResult.Good;
+                AddJudgement(new TaikoJudgement
+                {
+                    Result = hitOffset < HitObject.HitWindowGreat ? HitResult.Great : HitResult.Good,
+                    Final = !HitObject.IsStrong
+                });
+
+                SecondHitAllowed = true;
             }
             else
-                Judgement.Result = HitResult.Miss;
+                AddJudgement(new TaikoJudgement { Result = HitResult.Miss });
         }
 
         public override bool OnPressed(TaikoAction action)
         {
-            if (Judgement.Result != HitResult.None)
-                return false;
-
             validKeyPressed = HitActions.Contains(action);
 
             return UpdateJudgement(true);
+        }
+
+        protected override void Update()
+        {
+            base.Update();
+
+            Size = BaseSize * Parent.RelativeChildSize;
         }
 
         protected override void UpdateState(ArmedState state)
@@ -76,9 +82,10 @@ namespace osu.Game.Rulesets.Taiko.Objects.Drawables
             var circlePiece = MainPiece as CirclePiece;
             circlePiece?.FlashBox.FinishTransforms();
 
-            using (BeginDelayedSequence(HitObject.StartTime - Time.Current + Judgement.TimeOffset, true))
+            var offset = !AllJudged ? 0 : Time.Current - HitObject.StartTime;
+            using (BeginDelayedSequence(HitObject.StartTime - Time.Current + offset, true))
             {
-                switch (State)
+                switch (State.Value)
                 {
                     case ArmedState.Idle:
                         this.Delay(HitObject.HitWindowMiss).Expire();

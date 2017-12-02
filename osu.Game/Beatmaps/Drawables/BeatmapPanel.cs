@@ -5,6 +5,7 @@ using System;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Colour;
 using osu.Framework.Graphics.Containers;
+using osu.Framework.Graphics.Cursor;
 using osu.Framework.Graphics.Sprites;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Backgrounds;
@@ -14,16 +15,20 @@ using OpenTK.Graphics;
 using osu.Framework.Input;
 using osu.Game.Graphics.Sprites;
 using osu.Framework.Graphics.Shapes;
+using osu.Framework.Graphics.UserInterface;
 
 namespace osu.Game.Beatmaps.Drawables
 {
-    public class BeatmapPanel : Panel
+    public class BeatmapPanel : Panel, IHasContextMenu
     {
         public BeatmapInfo Beatmap;
         private readonly Sprite background;
 
         public Action<BeatmapPanel> GainedSelection;
         public Action<BeatmapPanel> StartRequested;
+        public Action<BeatmapPanel> EditRequested;
+        public Action<BeatmapInfo> HideRequested;
+
         private readonly Triangles triangles;
         private readonly StarCounter starCounter;
 
@@ -68,6 +73,9 @@ namespace osu.Game.Beatmaps.Drawables
 
         public BeatmapPanel(BeatmapInfo beatmap)
         {
+            if (beatmap == null)
+                throw new ArgumentNullException(nameof(beatmap));
+
             Beatmap = beatmap;
             Height *= 0.60f;
 
@@ -130,7 +138,7 @@ namespace osu.Game.Beatmaps.Drawables
                                         new OsuSpriteText
                                         {
                                             Font = @"Exo2.0-MediumItalic",
-                                            Text = $"{(beatmap.Metadata ?? beatmap.BeatmapSet.Metadata).Author}",
+                                            Text = $"{(beatmap.Metadata ?? beatmap.BeatmapSet.Metadata).Author.Username}",
                                             TextSize = 16,
                                             Anchor = Anchor.BottomLeft,
                                             Origin = Anchor.BottomLeft
@@ -148,5 +156,12 @@ namespace osu.Game.Beatmaps.Drawables
                 }
             };
         }
+
+        public MenuItem[] ContextMenuItems => new MenuItem[]
+        {
+            new OsuMenuItem("Play", MenuItemType.Highlighted, () => StartRequested?.Invoke(this)),
+            new OsuMenuItem("Edit", MenuItemType.Standard, () => EditRequested?.Invoke(this)),
+            new OsuMenuItem("Hide", MenuItemType.Destructive, () => HideRequested?.Invoke(Beatmap)),
+        };
     }
 }

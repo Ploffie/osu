@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using osu.Game.Rulesets.Objects;
 
 namespace osu.Game.Beatmaps.Formats
 {
@@ -19,9 +18,12 @@ namespace osu.Game.Beatmaps.Formats
 
         public static BeatmapDecoder GetDecoder(StreamReader stream)
         {
+            if (stream == null)
+                throw new ArgumentNullException(nameof(stream));
+
             string line;
             do { line = stream.ReadLine()?.Trim(); }
-                while (line != null && line.Length == 0);
+            while (line != null && line.Length == 0);
 
             if (line == null || !decoders.ContainsKey(line))
                 throw new IOException(@"Unknown file format");
@@ -47,11 +49,10 @@ namespace osu.Game.Beatmaps.Formats
         {
             var beatmap = new Beatmap
             {
-                HitObjects = new List<HitObject>(),
                 BeatmapInfo = new BeatmapInfo
                 {
                     Metadata = new BeatmapMetadata(),
-                    Difficulty = new BeatmapDifficulty(),
+                    BaseDifficulty = new BeatmapDifficulty(),
                 },
             };
 

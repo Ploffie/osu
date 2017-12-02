@@ -5,7 +5,9 @@ using System;
 using System.Diagnostics;
 using System.Reflection;
 using osu.Framework.Allocation;
+using osu.Framework.Audio;
 using osu.Framework.Configuration;
+using osu.Framework.Development;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Framework.IO.Stores;
@@ -14,10 +16,9 @@ using osu.Game.Beatmaps;
 using osu.Game.Configuration;
 using osu.Game.Graphics;
 using osu.Game.Graphics.Cursor;
-using osu.Game.Graphics.Processing;
 using osu.Game.Online.API;
-using SQLite.Net;
 using osu.Framework.Graphics.Performance;
+using osu.Framework.Logging;
 using osu.Game.Database;
 using osu.Game.Input;
 using osu.Game.Input.Bindings;
@@ -59,25 +60,12 @@ namespace osu.Game
 
         public bool IsDeployedBuild => AssemblyName.Version.Major > 0;
 
-        public bool IsDebug
-        {
-            get
-            {
-                // ReSharper disable once RedundantAssignment
-                bool isDebug = false;
-                // Debug.Assert conditions are only evaluated in debug mode
-                Debug.Assert(isDebug = true);
-                // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                return isDebug;
-            }
-        }
-
         public string Version
         {
             get
             {
                 if (!IsDeployedBuild)
-                    return @"local " + (IsDebug ? @"debug" : @"release");
+                    return @"local " + (DebugUtils.IsDebug ? @"debug" : @"release");
 
                 var assembly = AssemblyName;
                 return $@"{assembly.Version.Major}.{assembly.Version.Minor}.{assembly.Version.Build}";
@@ -94,23 +82,29 @@ namespace osu.Game
         protected override IReadOnlyDependencyContainer CreateLocalDependencies(IReadOnlyDependencyContainer parent) =>
             dependencies = new DependencyContainer(base.CreateLocalDependencies(parent));
 
-        private SQLiteConnection connection;
+        private DatabaseContextFactory contextFactory;
 
         [BackgroundDependencyLoader]
         private void load()
         {
+            dependencies.Cache(contextFactory = new DatabaseContextFactory(Host));
+
             dependencies.Cache(this);
             dependencies.Cache(LocalConfig);
 
-            connection = Host.Storage.GetDatabase(@"client");
+            runMigrations();
 
-            connection.CreateTable<StoreVersion>();
+            dependencies.Cache(API = new APIAccess
+            {
+                Username = LocalConfig.Get<string>(OsuSetting.Username),
+                Token = LocalConfig.Get<string>(OsuSetting.Token)
+            });
 
-            dependencies.Cache(RulesetStore = new RulesetStore(connection));
-            dependencies.Cache(FileStore = new FileStore(connection, Host.Storage));
-            dependencies.Cache(BeatmapManager = new BeatmapManager(Host.Storage, FileStore, connection, RulesetStore, Host));
-            dependencies.Cache(ScoreStore = new ScoreStore(Host.Storage, connection, Host, BeatmapManager, RulesetStore));
-            dependencies.Cache(KeyBindingStore = new KeyBindingStore(connection, RulesetStore));
+            dependencies.Cache(RulesetStore = new RulesetStore(contextFactory.GetContext));
+            dependencies.Cache(FileStore = new FileStore(contextFactory.GetContext, Host.Storage));
+            dependencies.Cache(BeatmapManager = new BeatmapManager(Host.Storage, contextFactory.GetContext, RulesetStore, API, Host));
+            dependencies.Cache(ScoreStore = new ScoreStore(Host.Storage, contextFactory.GetContext, Host, BeatmapManager, RulesetStore));
+            dependencies.Cache(KeyBindingStore = new KeyBindingStore(contextFactory.GetContext, RulesetStore));
             dependencies.Cache(new OsuColour());
 
             //this completely overrides the framework default. will need to change once we make a proper FontStore.
@@ -144,21 +138,24 @@ namespace osu.Game
             Beatmap = new NonNullableBindable<WorkingBeatmap>(defaultBeatmap);
             BeatmapManager.DefaultBeatmap = defaultBeatmap;
 
-            dependencies.Cache(API = new APIAccess
-            {
-                Username = LocalConfig.Get<string>(OsuSetting.Username),
-                Token = LocalConfig.Get<string>(OsuSetting.Token)
-            });
+            // tracks play so loud our samples can't keep up.
+            // this adds a global reduction of track volume for the time being.
+            Audio.Track.AddAdjustment(AdjustableProperty.Volume, new BindableDouble(0.8));
 
             Beatmap.ValueChanged += b =>
             {
-                // compare to last baetmap as sometimes the two may share a track representation (optimisation, see WorkingBeatmap.TransferTo)
-                if (lastBeatmap?.Track != b.Track)
+                var trackLoaded = lastBeatmap?.TrackLoaded ?? false;
+
+                // compare to last beatmap as sometimes the two may share a track representation (optimisation, see WorkingBeatmap.TransferTo)
+                if (!trackLoaded || lastBeatmap?.Track != b.Track)
                 {
-                    // this disposal is done to stop the audio track.
-                    // it may not be exactly what we want for cases beatmaps are reused, as it will
-                    // trigger a fresh load of contained resources.
-                    lastBeatmap?.Dispose();
+                    if (trackLoaded)
+                    {
+                        Debug.Assert(lastBeatmap != null);
+                        Debug.Assert(lastBeatmap.Track != null);
+
+                        lastBeatmap.RecycleTrack();
+                    }
 
                     Audio.Track.AddItem(b.Track);
                 }
@@ -167,6 +164,30 @@ namespace osu.Game
             };
 
             API.Register(this);
+
+            FileStore.Cleanup();
+        }
+
+        private void runMigrations()
+        {
+            try
+            {
+                using (var context = contextFactory.GetContext())
+                    context.Migrate();
+            }
+            catch (MigrationFailedException e)
+            {
+                Logger.Log((e.InnerException ?? e).ToString(), LoggingTarget.Database, LogLevel.Error);
+                Logger.Log("Migration failed! We'll be starting with a fresh database.", LoggingTarget.Database, LogLevel.Error);
+
+                // if we failed, let's delete the database and start fresh.
+                // todo: we probably want a better (non-destructive) migrations/recovery process at a later point than this.
+                contextFactory.ResetDatabase();
+                Logger.Log("Database purged successfully.", LoggingTarget.Database, LogLevel.Important);
+
+                using (var context = contextFactory.GetContext())
+                    context.Migrate();
+            }
         }
 
         private WorkingBeatmap lastBeatmap;
@@ -187,7 +208,7 @@ namespace osu.Game
 
             GlobalKeyBindingInputManager globalBinding;
 
-            base.Content.Add(new RatioAdjust
+            base.Content.Add(new DrawSizePreservingFillContainer
             {
                 Children = new Drawable[]
                 {
@@ -195,10 +216,9 @@ namespace osu.Game
                     globalBinding = new GlobalKeyBindingInputManager(this)
                     {
                         RelativeSizeAxes = Axes.Both,
-                        Child = new OsuTooltipContainer(Cursor)
+                        Child = content = new OsuTooltipContainer(Cursor)
                         {
                             RelativeSizeAxes = Axes.Both,
-                            Child = content = new OsuContextMenuContainer { RelativeSizeAxes = Axes.Both },
                         }
                     }
                 }
@@ -210,10 +230,7 @@ namespace osu.Game
             // TODO: This is temporary until we reimplement the local FPS display.
             // It's just to allow end-users to access the framework FPS display without knowing the shortcut key.
             fpsDisplayVisible = LocalConfig.GetBindable<bool>(OsuSetting.ShowFpsDisplay);
-            fpsDisplayVisible.ValueChanged += val =>
-            {
-                FrameStatisticsMode = val ? FrameStatisticsMode.Minimal : FrameStatisticsMode.None;
-            };
+            fpsDisplayVisible.ValueChanged += val => { FrameStatisticsMode = val ? FrameStatisticsMode.Minimal : FrameStatisticsMode.None; };
             fpsDisplayVisible.TriggerChange();
         }
 
@@ -238,8 +255,6 @@ namespace osu.Game
                 LocalConfig.Set(OsuSetting.Token, LocalConfig.Get<bool>(OsuSetting.SavePassword) ? API.Token : string.Empty);
                 LocalConfig.Save();
             }
-
-            connection.Dispose();
 
             base.Dispose(isDisposing);
         }

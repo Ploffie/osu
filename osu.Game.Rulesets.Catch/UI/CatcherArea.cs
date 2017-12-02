@@ -10,9 +10,8 @@ using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
 using osu.Framework.Input.Bindings;
 using osu.Framework.MathUtils;
-using osu.Game.Rulesets.Catch.Judgements;
+using osu.Game.Beatmaps;
 using osu.Game.Rulesets.Catch.Objects;
-using osu.Game.Rulesets.Catch.Objects.Drawable;
 using osu.Game.Rulesets.Objects.Drawables;
 using OpenTK;
 
@@ -20,44 +19,77 @@ namespace osu.Game.Rulesets.Catch.UI
 {
     public class CatcherArea : Container
     {
-        private Catcher catcher;
+        public const float CATCHER_SIZE = 172;
 
-        public void Add(DrawableHitObject<CatchBaseHit, CatchJudgement> fruit, Vector2 screenPosition) => catcher.AddToStack(fruit, screenPosition);
+        private readonly Catcher catcher;
 
-        public bool CheckIfWeCanCatch(CatchBaseHit obj) => Math.Abs(catcher.Position.X - obj.Position) < catcher.DrawSize.X / DrawSize.X / 2;
-
-        [BackgroundDependencyLoader]
-        private void load()
+        public Container ExplodingFruitTarget
         {
-            Children = new Drawable[]
+            set { catcher.ExplodingFruitTarget = value; }
+        }
+
+        public CatcherArea(BeatmapDifficulty difficulty = null)
+        {
+            RelativeSizeAxes = Axes.X;
+            Height = CATCHER_SIZE;
+            Child = catcher = new Catcher(difficulty)
             {
-                catcher = new Catcher
-                {
-                    RelativePositionAxes = Axes.Both,
-                    Anchor = Anchor.TopLeft,
-                    Origin = Anchor.TopCentre,
-                    X = 0.5f,
-                }
+                AdditiveTarget = this,
             };
         }
 
-        protected override void Update()
+        public void Add(DrawableHitObject fruit, Vector2 absolutePosition)
         {
-            base.Update();
+            fruit.RelativePositionAxes = Axes.None;
+            fruit.Position = new Vector2(catcher.ToLocalSpace(absolutePosition).X - catcher.DrawSize.X / 2, 0);
 
-            catcher.Size = new Vector2(DrawSize.Y);
+            fruit.Anchor = Anchor.TopCentre;
+            fruit.Origin = Anchor.BottomCentre;
+            fruit.Scale *= 0.7f;
+            fruit.LifetimeEnd = double.MaxValue;
+
+            catcher.Add(fruit);
         }
 
-        private class Catcher : Container, IKeyBindingHandler<CatchAction>
+        public bool CanCatch(CatchHitObject obj) => Math.Abs(catcher.Position.X - obj.X) < catcher.DrawSize.X * Math.Abs(catcher.Scale.X) / DrawSize.X / 2;
+
+        public class Catcher : Container, IKeyBindingHandler<CatchAction>
         {
             private Texture texture;
+
+            private Container<DrawableHitObject> caughtFruit;
+
+            public Container ExplodingFruitTarget;
+
+            public Container AdditiveTarget;
+
+            public Catcher(BeatmapDifficulty difficulty = null)
+            {
+                RelativePositionAxes = Axes.X;
+                X = 0.5f;
+
+                Origin = Anchor.TopCentre;
+                Anchor = Anchor.TopLeft;
+
+                Size = new Vector2(CATCHER_SIZE);
+                if (difficulty != null)
+                    Scale = new Vector2(1.0f - 0.7f * (difficulty.CircleSize - 5) / 5);
+            }
 
             [BackgroundDependencyLoader]
             private void load(TextureStore textures)
             {
                 texture = textures.Get(@"Play/Catch/fruit-catcher-idle");
 
-                Child = createCatcherSprite();
+                Children = new Drawable[]
+                {
+                    createCatcherSprite(),
+                    caughtFruit = new Container<DrawableHitObject>
+                    {
+                        Anchor = Anchor.TopCentre,
+                        Origin = Anchor.BottomCentre,
+                    }
+                };
             }
 
             private int currentDirection;
@@ -80,16 +112,18 @@ namespace osu.Game.Rulesets.Catch.UI
 
             private void addAdditiveSprite()
             {
-                if (!dashing) return;
+                if (!dashing || AdditiveTarget == null) return;
 
                 var additive = createCatcherSprite();
 
-                additive.RelativePositionAxes = Axes.Both;
-                additive.BlendingMode = BlendingMode.Additive;
+                additive.Anchor = Anchor;
+                additive.OriginPosition = additive.OriginPosition + new Vector2(DrawWidth / 2, 0); // also temporary to align sprite correctly.
                 additive.Position = Position;
                 additive.Scale = Scale;
+                additive.RelativePositionAxes = RelativePositionAxes;
+                additive.Blending = BlendingMode.Additive;
 
-                ((CatcherArea)Parent).Add(additive);
+                AdditiveTarget.Add(additive);
 
                 additive.FadeTo(0.4f).FadeOut(800, Easing.OutQuint).Expire();
 
@@ -98,11 +132,27 @@ namespace osu.Game.Rulesets.Catch.UI
 
             private Sprite createCatcherSprite() => new Sprite
             {
-                RelativeSizeAxes = Axes.Both,
-                FillMode = FillMode.Fit,
+                Size = new Vector2(CATCHER_SIZE),
+                FillMode = FillMode.Fill,
                 Texture = texture,
-                OriginPosition = new Vector2(DrawWidth / 2, 10) //temporary until the sprite is aligned correctly.
+                OriginPosition = new Vector2(-3, 10) // temporary until the sprite is aligned correctly.
             };
+
+            public void Add(DrawableHitObject fruit)
+            {
+                float distance = fruit.DrawSize.X / 2 * fruit.Scale.X;
+
+                while (caughtFruit.Any(f => f.LifetimeEnd == double.MaxValue && Vector2Extensions.DistanceSquared(f.Position, fruit.Position) < distance * distance))
+                {
+                    fruit.X += RNG.Next(-5, 5);
+                    fruit.Y -= RNG.Next(0, 5);
+                }
+
+                caughtFruit.Add(fruit);
+
+                if (((CatchHitObject)fruit.HitObject).LastInCombo)
+                    explode();
+            }
 
             public bool OnPressed(CatchAction action)
             {
@@ -140,38 +190,50 @@ namespace osu.Game.Rulesets.Catch.UI
                 return false;
             }
 
+            /// <summary>
+            /// The relative space to cover in 1 millisecond. based on 1 game pixel per millisecond as in osu-stable.
+            /// </summary>
+            public const double BASE_SPEED = 1.0 / 512;
+
             protected override void Update()
             {
                 base.Update();
 
                 if (currentDirection == 0) return;
 
-                float speed = Dashing ? 1.5f : 1;
+                double dashModifier = Dashing ? 1 : 0.5;
 
-                Scale = new Vector2(Math.Sign(currentDirection), 1);
-                X = (float)MathHelper.Clamp(X + Math.Sign(currentDirection) * Clock.ElapsedFrameTime / 1800 * speed, 0, 1);
+                Scale = new Vector2(Math.Abs(Scale.X) * Math.Sign(currentDirection), Scale.Y);
+                X = (float)MathHelper.Clamp(X + Math.Sign(currentDirection) * Clock.ElapsedFrameTime * BASE_SPEED * dashModifier, 0, 1);
             }
 
-            public void AddToStack(DrawableHitObject<CatchBaseHit, CatchJudgement> fruit, Vector2 absolutePosition)
+            private void explode()
             {
-                fruit.RelativePositionAxes = Axes.None;
-                fruit.Position = new Vector2(ToLocalSpace(absolutePosition).X - DrawSize.X / 2, 0);
+                var fruit = caughtFruit.ToArray();
 
-                fruit.Anchor = Anchor.TopCentre;
-                fruit.Origin = Anchor.BottomCentre;
-                fruit.Scale *= 0.7f;
-                fruit.LifetimeEnd = double.MaxValue;
-                fruit.Depth = (float)Time.Current;
-
-                float distance = fruit.DrawSize.X / 2 * fruit.Scale.X;
-
-                while (Children.OfType<DrawableFruit>().Any(f => Vector2.DistanceSquared(f.Position, fruit.Position) < distance * distance))
+                foreach (var f in fruit)
                 {
-                    fruit.X += RNG.Next(-5, 5);
-                    fruit.Y -= RNG.Next(0, 5);
-                }
+                    var originalX = f.X * Scale.X;
 
-                Add(fruit);
+                    if (ExplodingFruitTarget != null)
+                    {
+                        f.Anchor = Anchor.TopLeft;
+                        f.Position = caughtFruit.ToSpaceOfOtherDrawable(f.DrawPosition, ExplodingFruitTarget);
+
+                        caughtFruit.Remove(f);
+
+                        ExplodingFruitTarget.Add(f);
+                    }
+
+                    f.MoveToY(f.Y - 50, 250, Easing.OutSine)
+                     .Then()
+                     .MoveToY(f.Y + 50, 500, Easing.InSine);
+
+                    f.MoveToX(f.X + originalX * 6, 1000);
+                    f.FadeOut(750);
+
+                    f.Expire();
+                }
             }
         }
     }

@@ -15,7 +15,6 @@ using osu.Framework.Graphics.Containers;
 using osu.Framework.Graphics.Shapes;
 using osu.Framework.Graphics.Sprites;
 using osu.Framework.Graphics.Textures;
-using osu.Framework.Graphics.UserInterface;
 using osu.Framework.Input;
 using osu.Framework.Localisation;
 using osu.Framework.Threading;
@@ -38,7 +37,7 @@ namespace osu.Game.Overlays
 
         private const float bottom_black_area_height = 55;
 
-        private Drawable currentBackground;
+        private Drawable background;
         private ProgressBar progressBar;
 
         private IconButton prevButton;
@@ -121,7 +120,7 @@ namespace osu.Game.Overlays
                             },
                             Children = new[]
                             {
-                                currentBackground = new Background(),
+                                background = new Background(),
                                 title = new OsuSpriteText
                                 {
                                     Origin = Anchor.BottomCentre,
@@ -162,11 +161,15 @@ namespace osu.Game.Overlays
                                             {
                                                 prevButton = new IconButton
                                                 {
+                                                    Anchor = Anchor.Centre,
+                                                    Origin = Anchor.Centre,
                                                     Action = prev,
                                                     Icon = FontAwesome.fa_step_backward,
                                                 },
                                                 playButton = new IconButton
                                                 {
+                                                    Anchor = Anchor.Centre,
+                                                    Origin = Anchor.Centre,
                                                     Scale = new Vector2(1.4f),
                                                     IconScale = new Vector2(1.4f),
                                                     Action = play,
@@ -174,6 +177,8 @@ namespace osu.Game.Overlays
                                                 },
                                                 nextButton = new IconButton
                                                 {
+                                                    Anchor = Anchor.Centre,
+                                                    Origin = Anchor.Centre,
                                                     Action = next,
                                                     Icon = FontAwesome.fa_step_forward,
                                                 },
@@ -205,7 +210,7 @@ namespace osu.Game.Overlays
 
             beatmapBacking.BindTo(game.Beatmap);
 
-            playlist.StateChanged += (c, s) => playlistButton.FadeColour(s == Visibility.Visible ? colours.Yellow : Color4.White, 200, Easing.OutQuint);
+            playlist.StateChanged += s => playlistButton.FadeColour(s == Visibility.Visible ? colours.Yellow : Color4.White, 200, Easing.OutQuint);
         }
 
         protected override void LoadComplete()
@@ -303,8 +308,8 @@ namespace osu.Game.Overlays
                 else
                 {
                     //figure out the best direction based on order in playlist.
-                    var last = playlist.BeatmapSets.TakeWhile(b => b.ID != current.BeatmapSetInfo.ID).Count();
-                    var next = beatmap == null ? -1 : playlist.BeatmapSets.TakeWhile(b => b.ID != beatmap.BeatmapSetInfo.ID).Count();
+                    var last = playlist.BeatmapSets.TakeWhile(b => b.ID != current.BeatmapSetInfo?.ID).Count();
+                    var next = beatmap == null ? -1 : playlist.BeatmapSets.TakeWhile(b => b.ID != beatmap.BeatmapSetInfo?.ID).Count();
 
                     direction = last > next ? TransformDirection.Prev : TransformDirection.Next;
                 }
@@ -329,6 +334,7 @@ namespace osu.Game.Overlays
 
             pendingBeatmapSwitch = Schedule(delegate
             {
+                // todo: this can likely be replaced with WorkingBeatmap.GetBeatmapAsync()
                 Task.Run(() =>
                 {
                     if (beatmap?.Beatmap == null) //this is not needed if a placeholder exists
@@ -347,29 +353,26 @@ namespace osu.Game.Overlays
                     }
                 });
 
-                playerContainer.Add(new AsyncLoadWrapper(new Background(beatmap)
+                LoadComponentAsync(new Background(beatmap) { Depth = float.MaxValue }, newBackground =>
                 {
-                    OnLoadComplete = d =>
+                    switch (direction)
                     {
-                        switch (direction)
-                        {
-                            case TransformDirection.Next:
-                                d.Position = new Vector2(400, 0);
-                                d.MoveToX(0, 500, Easing.OutCubic);
-                                currentBackground.MoveToX(-400, 500, Easing.OutCubic);
-                                break;
-                            case TransformDirection.Prev:
-                                d.Position = new Vector2(-400, 0);
-                                d.MoveToX(0, 500, Easing.OutCubic);
-                                currentBackground.MoveToX(400, 500, Easing.OutCubic);
-                                break;
-                        }
-                        currentBackground.Expire();
-                        currentBackground = d;
+                        case TransformDirection.Next:
+                            newBackground.Position = new Vector2(400, 0);
+                            newBackground.MoveToX(0, 500, Easing.OutCubic);
+                            background.MoveToX(-400, 500, Easing.OutCubic);
+                            break;
+                        case TransformDirection.Prev:
+                            newBackground.Position = new Vector2(-400, 0);
+                            newBackground.MoveToX(0, 500, Easing.OutCubic);
+                            background.MoveToX(400, 500, Easing.OutCubic);
+                            break;
                     }
-                })
-                {
-                    Depth = float.MaxValue,
+
+                    background.Expire();
+                    background = newBackground;
+
+                    playerContainer.Add(newBackground);
                 });
             });
         }
@@ -433,50 +436,6 @@ namespace osu.Game.Overlays
             {
                 sprite.Texture = beatmap?.Background ?? textures.Get(@"Backgrounds/bg4");
             }
-        }
-
-        private class ProgressBar : SliderBar<double>
-        {
-            public Action<double> OnSeek;
-
-            private readonly Box fill;
-
-            public Color4 FillColour
-            {
-                set { fill.Colour = value; }
-            }
-
-            public double EndTime
-            {
-                set { CurrentNumber.MaxValue = value; }
-            }
-
-            public double CurrentTime
-            {
-                set { CurrentNumber.Value = value; }
-            }
-
-            public ProgressBar()
-            {
-                CurrentNumber.MinValue = 0;
-                CurrentNumber.MaxValue = 1;
-                RelativeSizeAxes = Axes.X;
-
-                Children = new Drawable[]
-                {
-                    fill = new Box
-                    {
-                        RelativeSizeAxes = Axes.Y
-                    }
-                };
-            }
-
-            protected override void UpdateValue(float value)
-            {
-                fill.Width = value * UsableWidth;
-            }
-
-            protected override void OnUserChange() => OnSeek?.Invoke(Current);
         }
     }
 }

@@ -1,7 +1,6 @@
 ﻿// Copyright (c) 2007-2017 ppy Pty Ltd <contact@ppy.sh>.
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
-using System;
 using OpenTK;
 using OpenTK.Graphics;
 using osu.Framework.Allocation;
@@ -13,6 +12,9 @@ using osu.Game.Graphics.Containers;
 using osu.Game.Graphics.Sprites;
 using osu.Game.Online.Chat;
 using osu.Game.Users;
+using osu.Framework.Graphics.Cursor;
+using osu.Framework.Graphics.UserInterface;
+using osu.Game.Graphics.UserInterface;
 
 namespace osu.Game.Overlays.Chat
 {
@@ -61,9 +63,8 @@ namespace osu.Game.Overlays.Chat
 
         private const float padding = 15;
         private const float message_padding = 200;
+        private const float action_padding = 3;
         private const float text_size = 20;
-
-        private Action<User> loadProfile;
 
         private Color4 customUsernameColour;
 
@@ -100,10 +101,9 @@ namespace osu.Game.Overlays.Chat
         }
 
         [BackgroundDependencyLoader(true)]
-        private void load(OsuColour colours, UserProfileOverlay profile)
+        private void load(OsuColour colours)
         {
             customUsernameColour = colours.ChatBlue;
-            loadProfile = u => profile?.ShowUser(u);
         }
 
         private bool senderHasBackground => !string.IsNullOrEmpty(message.Sender.Colour);
@@ -171,13 +171,12 @@ namespace osu.Game.Overlays.Chat
                             FixedWidth = true,
                             TextSize = text_size * 0.75f,
                         },
-                        new ClickableContainer
+                        new MessageSender(message.Sender)
                         {
                             AutoSizeAxes = Axes.Both,
                             Origin = Anchor.TopRight,
                             Anchor = Anchor.TopRight,
                             Child = effectedUsername,
-                            Action = () => loadProfile(message.Sender),
                         },
                     }
                 },
@@ -196,6 +195,8 @@ namespace osu.Game.Overlays.Chat
                     }
                 }
             };
+            if (message.IsAction && senderHasBackground)
+                contentFlow.Colour = OsuColour.FromHex(message.Sender.Colour);
 
             updateMessageContent();
             FinishTransforms(true);
@@ -208,7 +209,38 @@ namespace osu.Game.Overlays.Chat
 
             timestamp.Text = $@"{message.Timestamp.LocalDateTime:HH:mm:ss}";
             username.Text = $@"{message.Sender.Username}" + (senderHasBackground ? "" : ":");
-            contentFlow.Text = message.Content;
+
+            if (message.IsAction)
+            {
+                contentFlow.Clear();
+                contentFlow.AddText("[", sprite => sprite.Padding = new MarginPadding { Right = action_padding });
+                contentFlow.AddText(message.Content, sprite => sprite.Font = @"Exo2.0-MediumItalic");
+                contentFlow.AddText("]", sprite => sprite.Padding = new MarginPadding { Left = action_padding });
+            }
+            else
+                contentFlow.Text = message.Content;
+
+        }
+
+        private class MessageSender : OsuClickableContainer, IHasContextMenu
+        {
+            private readonly User sender;
+
+            public MessageSender(User sender)
+            {
+                this.sender = sender;
+            }
+
+            [BackgroundDependencyLoader(true)]
+            private void load(UserProfileOverlay profile)
+            {
+                Action = () => profile?.ShowUser(sender);
+            }
+
+            public MenuItem[] ContextMenuItems => new MenuItem[]
+            {
+                new OsuMenuItem("View Profile", MenuItemType.Highlighted, Action),
+            };
         }
     }
 }

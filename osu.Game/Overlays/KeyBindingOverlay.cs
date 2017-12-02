@@ -17,9 +17,9 @@ namespace osu.Game.Overlays
         [BackgroundDependencyLoader(permitNulls: true)]
         private void load(RulesetStore rulesets, GlobalKeyBindingInputManager global)
         {
-            AddSection(new GlobalKeyBindingsSection(global, "Global"));
+            AddSection(new GlobalKeyBindingsSection(global));
 
-            foreach (var ruleset in rulesets.AllRulesets)
+            foreach (var ruleset in rulesets.AvailableRulesets)
                 AddSection(new RulesetBindingsSection(ruleset));
         }
 

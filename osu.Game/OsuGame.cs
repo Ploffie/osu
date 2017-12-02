@@ -8,7 +8,6 @@ using osu.Game.Configuration;
 using osu.Framework.Graphics;
 using osu.Framework.Graphics.Containers;
 using osu.Game.Overlays;
-using osu.Framework.Input;
 using osu.Framework.Logging;
 using osu.Game.Graphics.UserInterface.Volume;
 using osu.Framework.Allocation;
@@ -47,6 +46,8 @@ namespace osu.Game
         private SocialOverlay social;
 
         private UserProfileOverlay userProfile;
+
+        private BeatmapSetOverlay beatmapSetOverlay;
 
         public virtual Storage GetStorageForStableInstall() => null;
 
@@ -108,7 +109,7 @@ namespace osu.Game
             dependencies.Cache(this);
 
             configRuleset = LocalConfig.GetBindable<int>(OsuSetting.Ruleset);
-            Ruleset.Value = RulesetStore.GetRuleset(configRuleset.Value);
+            Ruleset.Value = RulesetStore.GetRuleset(configRuleset.Value) ?? RulesetStore.AvailableRulesets.First();
             Ruleset.ValueChanged += r => configRuleset.Value = r.ID ?? 0;
         }
 
@@ -156,56 +157,66 @@ namespace osu.Game
             BeatmapManager.PostNotification = n => notificationOverlay?.Post(n);
             BeatmapManager.GetStableStorage = GetStorageForStableInstall;
 
-            AddRange(new Drawable[] {
+            AddRange(new Drawable[]
+            {
                 new VolumeControlReceptor
                 {
                     RelativeSizeAxes = Axes.Both,
-                    ActionRequested = delegate(InputState state) { volume.Adjust(state); }
+                    ActionRequested = action => volume.Adjust(action)
                 },
-                mainContent = new Container
-                {
-                    RelativeSizeAxes = Axes.Both,
-                },
-                volume = new VolumeControl(),
-                overlayContent = new Container { RelativeSizeAxes = Axes.Both },
-                new OnScreenDisplay(),
+                mainContent = new Container { RelativeSizeAxes = Axes.Both },
+                overlayContent = new Container { RelativeSizeAxes = Axes.Both, Depth = float.MinValue },
             });
 
-            LoadComponentAsync(screenStack = new Loader(), d =>
+            loadComponentSingleFile(screenStack = new Loader(), d =>
             {
                 screenStack.ModePushed += screenAdded;
                 screenStack.Exited += screenRemoved;
                 mainContent.Add(screenStack);
             });
 
+            loadComponentSingleFile(Toolbar = new Toolbar
+            {
+                Depth = -5,
+                OnHome = delegate
+                {
+                    hideAllOverlays();
+                    intro?.ChildScreen?.MakeCurrent();
+                },
+            }, overlayContent.Add);
+
+            loadComponentSingleFile(volume = new VolumeControl(), Add);
+            loadComponentSingleFile(new OnScreenDisplay(), Add);
+
             //overlay elements
-            LoadComponentAsync(direct = new DirectOverlay { Depth = -1 }, mainContent.Add);
-            LoadComponentAsync(social = new SocialOverlay { Depth = -1 }, mainContent.Add);
-            LoadComponentAsync(chat = new ChatOverlay { Depth = -1 }, mainContent.Add);
-            LoadComponentAsync(settings = new MainSettings
+            loadComponentSingleFile(direct = new DirectOverlay { Depth = -1 }, mainContent.Add);
+            loadComponentSingleFile(social = new SocialOverlay { Depth = -1 }, mainContent.Add);
+            loadComponentSingleFile(chat = new ChatOverlay { Depth = -1 }, mainContent.Add);
+            loadComponentSingleFile(settings = new MainSettings
             {
                 GetToolbarHeight = () => ToolbarOffset,
                 Depth = -1
             }, overlayContent.Add);
-            LoadComponentAsync(userProfile = new UserProfileOverlay { Depth = -2 }, mainContent.Add);
-            LoadComponentAsync(musicController = new MusicController
+            loadComponentSingleFile(userProfile = new UserProfileOverlay { Depth = -2 }, mainContent.Add);
+            loadComponentSingleFile(beatmapSetOverlay = new BeatmapSetOverlay { Depth = -3 }, mainContent.Add);
+            loadComponentSingleFile(musicController = new MusicController
             {
-                Depth = -3,
+                Depth = -4,
                 Position = new Vector2(0, Toolbar.HEIGHT),
                 Anchor = Anchor.TopRight,
                 Origin = Anchor.TopRight,
             }, overlayContent.Add);
 
-            LoadComponentAsync(notificationOverlay = new NotificationOverlay
+            loadComponentSingleFile(notificationOverlay = new NotificationOverlay
             {
-                Depth = -3,
+                Depth = -4,
                 Anchor = Anchor.TopRight,
                 Origin = Anchor.TopRight,
             }, overlayContent.Add);
 
-            LoadComponentAsync(dialogOverlay = new DialogOverlay
+            loadComponentSingleFile(dialogOverlay = new DialogOverlay
             {
-                Depth = -5,
+                Depth = -6,
             }, overlayContent.Add);
 
             Logger.NewEntry += entry =>
@@ -220,21 +231,45 @@ namespace osu.Game
 
             dependencies.Cache(settings);
             dependencies.Cache(social);
+            dependencies.Cache(direct);
             dependencies.Cache(chat);
             dependencies.Cache(userProfile);
             dependencies.Cache(musicController);
+            dependencies.Cache(beatmapSetOverlay);
             dependencies.Cache(notificationOverlay);
             dependencies.Cache(dialogOverlay);
 
-            // ensure both overlays aren't presented at the same time
-            chat.StateChanged += (container, state) => social.State = state == Visibility.Visible ? Visibility.Hidden : social.State;
-            social.StateChanged += (container, state) => chat.State = state == Visibility.Visible ? Visibility.Hidden : chat.State;
-
-            LoadComponentAsync(Toolbar = new Toolbar
+            // ensure only one of these overlays are open at once.
+            var singleDisplayOverlays = new OverlayContainer[] { chat, social, direct };
+            foreach (var overlay in singleDisplayOverlays)
             {
-                Depth = -4,
-                OnHome = delegate { intro?.ChildScreen?.MakeCurrent(); },
-            }, overlayContent.Add);
+                overlay.StateChanged += state =>
+                {
+                    if (state == Visibility.Hidden) return;
+
+                    foreach (var c in singleDisplayOverlays)
+                    {
+                        if (c == overlay) continue;
+                        c.State = Visibility.Hidden;
+                    }
+                };
+            }
+
+            // eventually informational overlays should be displayed in a stack, but for now let's only allow one to stay open at a time.
+            var informationalOverlays = new OverlayContainer[] { beatmapSetOverlay, userProfile };
+            foreach (var overlay in informationalOverlays)
+            {
+                overlay.StateChanged += state =>
+                {
+                    if (state == Visibility.Hidden) return;
+
+                    foreach (var c in informationalOverlays)
+                    {
+                        if (c == overlay) continue;
+                        c.State = Visibility.Hidden;
+                    }
+                };
+            }
 
             settings.StateChanged += delegate
             {
@@ -250,6 +285,17 @@ namespace osu.Game
             };
 
             Cursor.State = Visibility.Hidden;
+        }
+
+        private Task asyncLoadStream;
+
+        private void loadComponentSingleFile<T>(T d, Action<T> add)
+            where T : Drawable
+        {
+            // schedule is here to ensure that all component loads are done after LoadComplete is run (and thus all dependencies are cached).
+            // with some better organisation of LoadComplete to do construction and dependency caching in one step, followed by calls to loadComponentSingleFile,
+            // we could avoid the need for scheduling altogether.
+            Schedule(() => { asyncLoadStream = asyncLoadStream?.ContinueWith(t => LoadComponentAsync(d, add).Wait()) ?? LoadComponentAsync(d, add); });
         }
 
         public bool OnPressed(GlobalAction action)
@@ -298,6 +344,16 @@ namespace osu.Game
         private OsuScreen currentScreen;
         private FrameworkConfigManager frameworkConfig;
 
+        private void hideAllOverlays()
+        {
+            settings.State = Visibility.Hidden;
+            chat.State = Visibility.Hidden;
+            direct.State = Visibility.Hidden;
+            social.State = Visibility.Hidden;
+            userProfile.State = Visibility.Hidden;
+            notificationOverlay.State = Visibility.Hidden;
+        }
+
         private void screenChanged(Screen newScreen)
         {
             currentScreen = newScreen as OsuScreen;
@@ -311,19 +367,12 @@ namespace osu.Game
             //central game screen change logic.
             if (!currentScreen.ShowOverlays)
             {
-                settings.State = Visibility.Hidden;
-                Toolbar.State = Visibility.Hidden;
+                hideAllOverlays();
                 musicController.State = Visibility.Hidden;
-                chat.State = Visibility.Hidden;
-                direct.State = Visibility.Hidden;
-                social.State = Visibility.Hidden;
-                userProfile.State = Visibility.Hidden;
-                notificationOverlay.State = Visibility.Hidden;
+                Toolbar.State = Visibility.Hidden;
             }
             else
-            {
                 Toolbar.State = Visibility.Visible;
-            }
 
             ScreenChanged?.Invoke(newScreen);
         }

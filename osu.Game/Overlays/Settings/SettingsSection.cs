@@ -23,7 +23,7 @@ namespace osu.Game.Overlays.Settings
         public abstract string Header { get; }
 
         public IEnumerable<IFilterable> FilterableChildren => Children.OfType<IFilterable>();
-        public string[] FilterTerms => new[] { Header };
+        public IEnumerable<string> FilterTerms => new[] { Header };
 
         private const int header_size = 26;
         private const int header_margin = 25;
@@ -69,8 +69,6 @@ namespace osu.Game.Overlays.Settings
                     Padding = new MarginPadding
                     {
                         Top = 20 + border_size,
-                        Left = SettingsOverlay.CONTENT_MARGINS,
-                        Right = SettingsOverlay.CONTENT_MARGINS,
                         Bottom = 10,
                     },
                     RelativeSizeAxes = Axes.X,
@@ -81,7 +79,8 @@ namespace osu.Game.Overlays.Settings
                         {
                             TextSize = header_size,
                             Text = Header,
-                            Colour = colours.Yellow
+                            Colour = colours.Yellow,
+                            Margin = new MarginPadding { Left = SettingsOverlay.CONTENT_MARGINS, Right = SettingsOverlay.CONTENT_MARGINS }
                         },
                         FlowContent
                     }

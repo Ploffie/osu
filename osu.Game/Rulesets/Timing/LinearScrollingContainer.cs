@@ -8,14 +8,12 @@ namespace osu.Game.Rulesets.Timing
     /// <summary>
     /// A <see cref="ScrollingContainer"/> which scrolls linearly relative to the <see cref="MultiplierControlPoint"/> start time.
     /// </summary>
-    internal class LinearScrollingContainer : ScrollingContainer
+    public class LinearScrollingContainer : ScrollingContainer
     {
-        private readonly Axes scrollingAxes;
         private readonly MultiplierControlPoint controlPoint;
 
-        public LinearScrollingContainer(Axes scrollingAxes, MultiplierControlPoint controlPoint)
+        public LinearScrollingContainer(MultiplierControlPoint controlPoint)
         {
-            this.scrollingAxes = scrollingAxes;
             this.controlPoint = controlPoint;
         }
 
@@ -23,8 +21,8 @@ namespace osu.Game.Rulesets.Timing
         {
             base.Update();
 
-            if ((scrollingAxes & Axes.X) > 0) X = (float)(controlPoint.StartTime - Time.Current);
-            if ((scrollingAxes & Axes.Y) > 0) Y = (float)(controlPoint.StartTime - Time.Current);
+            if ((ScrollingAxes & Axes.X) > 0) X = (float)(controlPoint.StartTime - Time.Current);
+            if ((ScrollingAxes & Axes.Y) > 0) Y = (float)(controlPoint.StartTime - Time.Current);
         }
     }
 }

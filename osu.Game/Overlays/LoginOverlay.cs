@@ -9,10 +9,11 @@ using osu.Game.Overlays.Settings.Sections.General;
 using OpenTK.Graphics;
 using osu.Framework.Graphics.Shapes;
 using osu.Game.Graphics.Containers;
+using osu.Game.Graphics.Cursor;
 
 namespace osu.Game.Overlays
 {
-    internal class LoginOverlay : OsuFocusedOverlayContainer
+    public class LoginOverlay : OsuFocusedOverlayContainer
     {
         private LoginSettings settingsSection;
 
@@ -28,35 +29,43 @@ namespace osu.Game.Overlays
         {
             Children = new Drawable[]
             {
-                new Box
-                {
-                    RelativeSizeAxes = Axes.Both,
-                    Colour = Color4.Black,
-                    Alpha = 0.6f,
-                },
-                new Container
+                new OsuContextMenuContainer
                 {
                     Width = 360,
                     AutoSizeAxes = Axes.Y,
-                    Masking = true,
-                    AutoSizeDuration = transition_time,
-                    AutoSizeEasing = Easing.OutQuint,
                     Children = new Drawable[]
                     {
-                        settingsSection = new LoginSettings
-                        {
-                            Padding = new MarginPadding(10),
-                            RequestHide = Hide,
-                        },
                         new Box
                         {
-                            RelativeSizeAxes = Axes.X,
-                            Anchor = Anchor.BottomLeft,
-                            Origin = Anchor.BottomLeft,
-                            Height = 3,
-                            Colour = colours.Yellow,
-                            Alpha = 1,
+                            RelativeSizeAxes = Axes.Both,
+                            Colour = Color4.Black,
+                            Alpha = 0.6f,
                         },
+                        new Container
+                        {
+                            RelativeSizeAxes = Axes.X,
+                            AutoSizeAxes = Axes.Y,
+                            Masking = true,
+                            AutoSizeDuration = transition_time,
+                            AutoSizeEasing = Easing.OutQuint,
+                            Children = new Drawable[]
+                            {
+                                settingsSection = new LoginSettings
+                                {
+                                    Padding = new MarginPadding(10),
+                                    RequestHide = Hide,
+                                },
+                                new Box
+                                {
+                                    RelativeSizeAxes = Axes.X,
+                                    Anchor = Anchor.BottomLeft,
+                                    Origin = Anchor.BottomLeft,
+                                    Height = 3,
+                                    Colour = colours.Yellow,
+                                    Alpha = 1,
+                                },
+                            }
+                        }
                     }
                 }
             };

@@ -1,6 +1,7 @@
 // Copyright (c) 2007-2017 ppy Pty Ltd <contact@ppy.sh>.
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
+using System;
 using osu.Framework;
 using OpenTK;
 using osu.Framework.Allocation;
@@ -19,18 +20,20 @@ namespace osu.Game.Overlays.MedalSplash
         private const float scale_when_unlocked = 0.76f;
         private const float scale_when_full = 0.6f;
 
+        public event Action<DisplayState> StateChanged;
+
         private readonly Medal medal;
         private readonly Container medalContainer;
         private readonly Sprite medalSprite, medalGlow;
         private readonly OsuSpriteText unlocked, name;
         private readonly TextFlowContainer description;
-        private readonly FillFlowContainer infoFlow;
         private DisplayState state;
         public DrawableMedal(Medal medal)
         {
             this.medal = medal;
             Position = new Vector2(0f, MedalOverlay.DISC_SIZE / 2);
 
+            FillFlowContainer infoFlow;
             Children = new Drawable[]
             {
                 medalContainer = new Container
@@ -87,6 +90,7 @@ namespace osu.Game.Overlays.MedalSplash
                         },
                         description = new TextFlowContainer
                         {
+                            TextAnchor = Anchor.TopCentre,
                             Anchor = Anchor.TopCentre,
                             Origin = Anchor.TopCentre,
                             RelativeSizeAxes = Axes.X,
@@ -104,6 +108,12 @@ namespace osu.Game.Overlays.MedalSplash
                 s.Origin = Anchor.TopCentre;
                 s.TextSize = 16;
             });
+
+            medalContainer.OnLoadComplete = d =>
+            {
+                unlocked.Position = new Vector2(0f, medalContainer.DrawSize.Y / 2 + 10);
+                infoFlow.Position = new Vector2(0f, unlocked.Position.Y + 90);
+            };
         }
 
         [BackgroundDependencyLoader]
@@ -112,14 +122,12 @@ namespace osu.Game.Overlays.MedalSplash
             medalSprite.Texture = textures.Get(medal.ImageUrl);
             medalGlow.Texture = textures.Get(@"MedalSplash/medal-glow");
             description.Colour = colours.BlueLight;
-
-            unlocked.Position = new Vector2(0f, medalContainer.Size.Y / 2 + 10);
-            infoFlow.Position = new Vector2(0f, unlocked.Position.Y + 90);
         }
 
         protected override void LoadComplete()
         {
             base.LoadComplete();
+
             updateState();
         }
 
@@ -132,6 +140,8 @@ namespace osu.Game.Overlays.MedalSplash
 
                 state = value;
                 updateState();
+
+                StateChanged?.Invoke(State);
             }
         }
 
@@ -167,6 +177,7 @@ namespace osu.Game.Overlays.MedalSplash
 
                     this.ScaleTo(scale_when_full, duration, Easing.OutExpo);
                     this.MoveToY(MedalOverlay.DISC_SIZE / 2 - 60, duration, Easing.OutExpo);
+                    unlocked.Show();
                     name.FadeInFromZero(duration + 100);
                     description.FadeInFromZero(duration * 2);
                     break;

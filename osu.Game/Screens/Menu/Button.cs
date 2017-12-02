@@ -28,6 +28,8 @@ namespace osu.Game.Screens.Menu
     /// </summary>
     public class Button : BeatSyncedContainer, IStateful<ButtonState>
     {
+        public event Action<ButtonState> StateChanged;
+
         private readonly Container iconText;
         private readonly Container box;
         private readonly Box boxHoverLayer;
@@ -81,7 +83,7 @@ namespace osu.Game.Screens.Menu
                         {
                             EdgeSmoothness = new Vector2(1.5f, 0),
                             RelativeSizeAxes = Axes.Both,
-                            BlendingMode = BlendingMode.Additive,
+                            Blending = BlendingMode.Additive,
                             Colour = Color4.White,
                             Alpha = 0,
                         },
@@ -119,13 +121,14 @@ namespace osu.Game.Screens.Menu
             };
         }
 
+        private bool rightward;
+
         protected override void OnNewBeat(int beatIndex, TimingControlPoint timingPoint, EffectControlPoint effectPoint, TrackAmplitudes amplitudes)
         {
             base.OnNewBeat(beatIndex, timingPoint, effectPoint, amplitudes);
 
             if (!IsHovered) return;
 
-            bool rightward = beatIndex % 2 == 1;
             double duration = timingPoint.BeatLength / 2;
 
             icon.RotateTo(rightward ? 10 : -10, duration * 2, Easing.InOutSine);
@@ -137,6 +140,8 @@ namespace osu.Game.Screens.Menu
                 i => i.MoveToY(0, duration, Easing.In),
                 i => i.ScaleTo(new Vector2(1, 0.9f), duration, Easing.In)
             );
+
+            rightward = !rightward;
         }
 
         protected override bool OnHover(InputState state)
@@ -150,7 +155,7 @@ namespace osu.Game.Screens.Menu
             double duration = TimeUntilNextBeat;
 
             icon.ClearTransforms();
-            icon.RotateTo(10, duration, Easing.InOutSine);
+            icon.RotateTo(rightward ? -10 : 10, duration, Easing.InOutSine);
             icon.ScaleTo(new Vector2(1, 0.9f), duration, Easing.Out);
             return true;
         }
@@ -169,7 +174,7 @@ namespace osu.Game.Screens.Menu
         [BackgroundDependencyLoader]
         private void load(AudioManager audio)
         {
-            sampleHover = audio.Sample.Get(@"Menu/hover");
+            sampleHover = audio.Sample.Get(@"Menu/button-hover");
             if (!string.IsNullOrEmpty(sampleName))
                 sampleClick = audio.Sample.Get($@"Menu/{sampleName}");
         }
@@ -266,6 +271,8 @@ namespace osu.Game.Screens.Menu
                         this.FadeOut(explode_duration / 4f * 3);
                         break;
                 }
+
+                StateChanged?.Invoke(State);
             }
         }
     }

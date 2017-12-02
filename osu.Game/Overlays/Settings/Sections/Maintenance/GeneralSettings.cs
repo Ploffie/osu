@@ -1,6 +1,7 @@
 ﻿// Copyright (c) 2007-2017 ppy Pty Ltd <contact@ppy.sh>.
 // Licensed under the MIT Licence - https://raw.githubusercontent.com/ppy/osu/master/LICENCE
 
+using System.Linq;
 using System.Threading.Tasks;
 using osu.Framework.Allocation;
 using osu.Framework.Graphics;
@@ -11,8 +12,9 @@ namespace osu.Game.Overlays.Settings.Sections.Maintenance
 {
     public class GeneralSettings : SettingsSubsection
     {
-        private OsuButton importButton;
-        private OsuButton deleteButton;
+        private TriangleButton importButton;
+        private TriangleButton deleteButton;
+        private TriangleButton restoreButton;
 
         protected override string Header => "General";
 
@@ -21,24 +23,36 @@ namespace osu.Game.Overlays.Settings.Sections.Maintenance
         {
             Children = new Drawable[]
             {
-                importButton = new OsuButton
+                importButton = new SettingsButton
                 {
-                    RelativeSizeAxes = Axes.X,
                     Text = "Import beatmaps from stable",
                     Action = () =>
                     {
                         importButton.Enabled.Value = false;
-                        Task.Run(() => beatmaps.ImportFromStable()).ContinueWith(t => Schedule(() => importButton.Enabled.Value = true));
+                        Task.Factory.StartNew(beatmaps.ImportFromStable)
+                            .ContinueWith(t => Schedule(() => importButton.Enabled.Value = true), TaskContinuationOptions.LongRunning);
                     }
                 },
-                deleteButton = new OsuButton
+                deleteButton = new SettingsButton
                 {
-                    RelativeSizeAxes = Axes.X,
                     Text = "Delete ALL beatmaps",
                     Action = () =>
                     {
                         deleteButton.Enabled.Value = false;
                         Task.Run(() => beatmaps.DeleteAll()).ContinueWith(t => Schedule(() => deleteButton.Enabled.Value = true));
+                    }
+                },
+                restoreButton = new SettingsButton
+                {
+                    Text = "Restore all hidden difficulties",
+                    Action = () =>
+                    {
+                        restoreButton.Enabled.Value = false;
+                        Task.Run(() =>
+                        {
+                            foreach (var b in beatmaps.QueryBeatmaps(b => b.Hidden).ToList())
+                                beatmaps.Restore(b);
+                        }).ContinueWith(t => Schedule(() => restoreButton.Enabled.Value = true));
                     }
                 },
             };

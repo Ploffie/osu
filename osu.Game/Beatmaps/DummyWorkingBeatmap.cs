@@ -7,13 +7,11 @@ using osu.Framework.Audio.Track;
 using osu.Framework.Graphics.Textures;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Mods;
-using osu.Game.Rulesets.Objects;
-using osu.Game.Rulesets.Scoring;
 using osu.Game.Rulesets.UI;
 
 namespace osu.Game.Beatmaps
 {
-    internal class DummyWorkingBeatmap : WorkingBeatmap
+    public class DummyWorkingBeatmap : WorkingBeatmap
     {
         private readonly OsuGameBase game;
 
@@ -24,10 +22,10 @@ namespace osu.Game.Beatmaps
                 {
                     Artist = "please load a beatmap!",
                     Title = "no beatmaps available!",
-                    Author = "no one",
+                    AuthorString = "no one",
                 },
                 BeatmapSet = new BeatmapSetInfo(),
-                Difficulty = new BeatmapDifficulty
+                BaseDifficulty = new BeatmapDifficulty
                 {
                     DrainRate = 0,
                     CircleSize = 0,
@@ -42,10 +40,7 @@ namespace osu.Game.Beatmaps
             this.game = game;
         }
 
-        protected override Beatmap GetBeatmap() => new Beatmap
-        {
-            HitObjects = new List<HitObject>(),
-        };
+        protected override Beatmap GetBeatmap() => new Beatmap();
 
         protected override Texture GetBackground() => game.Textures.Get(@"Backgrounds/bg4");
 
@@ -59,19 +54,12 @@ namespace osu.Game.Beatmaps
             {
                 public override IEnumerable<Mod> GetModsFor(ModType type) => new Mod[] { };
 
-                public override Mod GetAutoplayMod() => new ModAutoplay();
-
                 public override RulesetContainer CreateRulesetContainerWith(WorkingBeatmap beatmap, bool isForCurrentRuleset)
                 {
                     throw new NotImplementedException();
                 }
 
-                public override DifficultyCalculator CreateDifficultyCalculator(Beatmap beatmap) => null;
-
-                public override ScoreProcessor CreateScoreProcessor()
-                {
-                    throw new NotImplementedException();
-                }
+                public override DifficultyCalculator CreateDifficultyCalculator(Beatmap beatmap, Mod[] mods = null) => null;
 
                 public override string Description => "dummy";
 
